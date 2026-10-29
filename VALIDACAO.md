@@ -1,32 +1,25 @@
-# Validação — NF Capture beta 0.2 LIVE / R2
+# Validação — NF Capture R3
 
-## Testes internos aprovados
+## Método e testes
 
-- Captura única: resposta complexa de um FIR h=[0,5; 0,25] comparada à resposta analítica H(w)=0,5+0,25 exp(-jw), com erro absoluto inferior a 0,00001 em todos os bins positivos antes de Nyquist.
-- Nove combinações: 44,1 / 48 / 96 kHz com blocos de 64 / 511 / 1024 amostras.
-- Passagem de áudio idêntica amostra a amostra nos dois canais do analisador.
-- LIVE: magnitude e fase do FIR conferidas com a resposta analítica, com tolerância de 0,001 dB e 0,001 grau, incluindo deslocamentos de 0, 127 e 8191 amostras dentro da janela de 8192.
-- Integração da interface com a captura: alimentação do processador com frames sucessivos, leitura real do FIFO e atualização da curva após mudanças de ganho. Aumento de ganho de 6,0206 dB e redução de 12,0412 dB conferidos em todos os bins positivos úteis, com tolerância de 0,0001 dB.
-- Hold: os vetores da curva permaneceram inalterados durante a pausa; a leitura retomou os novos valores ao sair de Hold.
-- Probe: impulso único de amplitude 0,25 em ambos os canais, sem repetição no bloco seguinte; seno de 1 kHz a amplitude 0,125 em 48 kHz.
-- Probe LIVE: impulsos de 0,25 a cada 8192 amostras, conferidos amostra a amostra através de blocos de 64, 511 e 1024 amostras.
-- Interface roxa mais clara com nomes centralizados. Redimensionamento e restauração pelo logo verificados em ambas as instâncias. A imagem mostra o filtro sintético usado nos testes e uma curva de referência.
+O LIVE usa multisseno periódico determinístico, com excitação em todos os bins positivos, exceto DC/Nyquist. O analisador calcula Y/X usando a sequência realmente gerada, reconstrói a resposta periódica e remove a referência de tempo do pico dominante para exibir a fase relativa.
 
-Os testes de interface chamam a rotina de atualização diretamente; não são um teste dentro da DAW nem uma garantia de temporização sob carga. A frequência de leitura LIVE é aproximadamente Fs/8192, limitada também pelo temporizador gráfico de 15 Hz e pela latência do plugin em teste.
+Testes aprovados na preparação da R3:
 
-## Revisão R2
+- Três perfis, em 44,1 / 48 / 96 kHz.
+- Filtros de referência a 103,816 Hz, Q 24, ganhos de +30 e -30 dB. Todos os bins úteis foram comparados à resposta matemática dos coeficientes, após estabilização. Tolerância: 0,02 dB. O maior erro observado nessa comparação foi inferior a 0,00004 dB nos casos testados.
+- Esse erro é de cálculo nos bins, não o erro entre o pico verdadeiro e um bin próximo. Para +30 dB em 103,816 Hz / Q 24 / 44,1 kHz: Rápido mediu máximo de +17,7312 dB; Equilibrado, +29,0738 dB; Preciso, +29,9892 dB. Em 48 e 96 kHz, Preciso mediu +29,9993 dB nesse caso.
+- Ganho de -6,0206 dB e fase relativa zero com sinal deslocado circularmente, em todos os perfis e taxas. Tolerâncias: 0,001 dB e 0,01 grau.
+- Silêncio e amostras NaN rejeitados.
+- Recuperação após overflow real do FIFO: descarte da janela incompleta, nova preparação e retomada da leitura válida.
+- Continuidade exata do gerador através de blocos de 64 / 511 / 1024, nos três perfis.
+- Atualização LIVE com mudanças de ganho; Hold e Retomar; restauração de estado; passagem de áudio inalterada no analisador.
+- Captura única por impulso: nove combinações de taxas e blocos; resposta FIR comparada à forma analítica.
+- Redimensionamento, alça, coordenadas de clique e restauração pelo logo mantidos nas duas instâncias.
+- Renderizações dos painéis de ganho e ganho + fase com uma cadeia sintética de três filtros, semelhante à demonstrada nas capturas do usuário. As imagens não são uma captura dentro da Mixa.
 
-- Capture e Probe redimensionados para larguras de 700, 1400 e 1600, com proporções preservadas.
-- Alça presente no canto inferior direito e teste de clique nos controles após escalar a interface.
-- Dois cliques na área do logo restauram o tamanho padrão; clique duplo fora da área não o altera.
-- Renderizações revisadas nos tamanhos reduzido, padrão e ampliado.
-- Estado LIVE do analisador e sinal periódico do Probe preservados após salvar o estado, recriar o processador e preparar o áudio novamente. A nova interface do analisador recupera o modo LIVE.
-- Formato de estado atualizado com leitura dos estados da versão anterior. Estados antigos não continham o modo LIVE; exigem ativação manual inicial.
+A fase é relativa ao pico dominante; não representa latência absoluta. Respostas de filtros não lineares ou variantes no tempo não são certificadas por esses testes. A indicação de estabilidade não é uma estimativa de coerência ou de erro metrológico.
 
-## Limites e validação externa
+## Verificação externa
 
-A Mixa ainda não foi usada para validar esta versão. Na tentativa anterior, o pluginval do ambiente encerrou sem relatório utilizável; não há aprovação externa por pluginval. Não há compilação ou validação Windows nesta entrega.
-
-Os testes verificam o caminho digital em condições controladas. Não certificam medições com ruído, saturação, compressão, modulação ou sinal de teste incorreto. A fase é relativa ao pico do período em LIVE, e ao início detectado na captura única. Não é uma medição de latência absoluta.
-
-Consulte LEIA-ME.md para instalar os dois componentes atualizados e ativar LIVE no Probe e no Capture.
+Não houve validação desta revisão dentro da Mixa. A compatibilidade e a retomada após trocar o plugin intermediário dependem também do host restaurar corretamente os estados e o roteamento. O pluginval do ambiente não forneceu um relatório utilizável na tentativa anterior; não há aprovação externa por pluginval. Windows não foi compilado nem testado.
