@@ -1,0 +1,9 @@
+.DS_Store
+/build/
+/work/
+/Mac/
+*.zip
+*.vst3/
+*.component/
+/NF-Capture-preview.png
+/NF-Capture-Probe-R2.png
