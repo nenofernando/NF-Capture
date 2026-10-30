@@ -44,9 +44,12 @@ private:
  std::vector<float> fftData=std::vector<float>(2*count,0.0f);
  bool frozen=false, captured=false, liveActive=false;
  ContinuousResponse continuous;
+ StableResponseGate liveGate;
+ bool measurementCurrent=false,previewReady=false;
+ std::vector<float> previewMagnitude,previewPhase;
  std::vector<float> liveSamples,liveHistory;
  size_t historyWrite=0,historyFill=0;
- uint64_t seenDrops=0,seenGeneration=0;
+ uint64_t seenDrops=0,seenGeneration=0,seenAudio=0;
  void resetLive();
  int responseSize=count, referenceSize=count;
  double responseRate=48000, referenceRate=48000;
@@ -75,6 +78,7 @@ public:
    }
    return;
   }
+  processedSamples.fetch_add((uint64_t)b.getNumSamples());
   for(int i=0;i<b.getNumSamples();++i){
    float v=b.getSample(0,i);
    if(state.load()==1 && std::abs(v)>0.000001f){pos=0;state.store(2);}
@@ -89,9 +93,9 @@ public:
  bool hasEditor() const override {return true;}
  bool acceptsMidi() const override {return false;} bool producesMidi() const override {return false;} double getTailLengthSeconds() const override {return 0;}
  int getNumPrograms() override {return 1;} int getCurrentProgram() override {return 0;} void setCurrentProgram(int) override {} const String getProgramName(int) override {return {}; } void changeProgramName(int,const String&) override {}
- void getStateInformation(MemoryBlock& d) override {MemoryOutputStream out(d,false);out.writeInt(3);out.writeFloat(tone.load());out.writeBool(signal.load()==2);out.writeBool(liveEnabled.load());out.writeInt(quality.load());}
- void setStateInformation(const void* d,int n) override {MemoryInputStream in(d,(size_t)n,false);auto version=in.readInt();if(version>=1 && version<=3)tone.store(jlimit(20.0f,20000.0f,in.readFloat()));signal=0;liveEnabled=false;if(version>=2 && version<=3){signal=in.readBool()?2:0;liveEnabled=in.readBool();}quality=version==3?jlimit(0,2,in.readInt()):1;}
- std::atomic<int> quality{1};std::atomic<uint64_t> generation{0},dropped{0};
+ void getStateInformation(MemoryBlock& d) override {MemoryOutputStream out(d,false);out.writeInt(4);out.writeFloat(tone.load());out.writeBool(signal.load()==2);out.writeBool(liveEnabled.load());out.writeInt(quality.load());}
+ void setStateInformation(const void* d,int n) override {MemoryInputStream in(d,(size_t)n,false);auto version=in.readInt();if(version>=1 && version<=4)tone.store(jlimit(20.0f,20000.0f,in.readFloat()));signal=0;liveEnabled=false;if(version>=2 && version<=4){signal=in.readBool()?2:0;liveEnabled=in.readBool();}quality=version>=3 && version<=4?jlimit(0,2,in.readInt()):0;}
+ std::atomic<int> quality{0};std::atomic<uint64_t> generation{0},dropped{0},processedSamples{0};
  std::atomic<bool> liveEnabled{false};
  std::atomic<int> state{0},fire{0},signal{0};std::atomic<float> tone{1000};
  double rate=48000,angle=0;int pos=0,probePosition=0,previousMode=0,previousProfile=-1; bool pulse=false;
@@ -124,10 +128,10 @@ Editor::Editor(Processor& proc):AudioProcessorEditor(proc),p(proc){
   arm.onClick=[this]{if(p.state.load()==2)return;liveActive=false;p.liveEnabled=false;frozen=false;live.setButtonText("LIVE: iniciar");hold.setButtonText("Hold"); p.state.store(1);status="Aguardando impulso do Probe. Canal medido: esquerdo / mono.";repaint();};
   hold.onClick=[this]{frozen=!frozen;hold.setButtonText(frozen?"Retomar":"Hold");};
   compare.onClick=[this]{if(captured){reference=magnitude;referenceSize=responseSize;referenceRate=responseRate;status="Curva A guardada nesta janela.";repaint();}};
-  save.onClick=[this]{if(!captured)return;chooser=std::make_unique<FileChooser>("Exportar medicao",File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("NF-Capture.csv"),"*.csv");chooser->launchAsync(FileBrowserComponent::saveMode|FileBrowserComponent::canSelectFiles|FileBrowserComponent::warnAboutOverwriting,[this](const FileChooser& fc){auto file=fc.getResult();if(file==File())return;String csv="frequency_hz,magnitude_db,phase_relative_deg\n";for(size_t i=1;i<magnitude.size();++i)csv+=String(i*responseRate/responseSize,6)+","+String(magnitude[i],6)+","+String(phase[i],6)+"\n";status=file.replaceWithText(csv)?"CSV exportado.":"Nao foi possivel salvar o CSV.";repaint();});};
+  save.onClick=[this]{if(!captured)return;chooser=std::make_unique<FileChooser>("Exportar medicao",File::getSpecialLocation(File::userDocumentsDirectory).getChildFile("NF-Capture.csv"),"*.csv");chooser->launchAsync(FileBrowserComponent::saveMode|FileBrowserComponent::canSelectFiles|FileBrowserComponent::warnAboutOverwriting,[this,measurement=magnitude,measuredPhase=phase,measuredRate=responseRate,measuredSize=responseSize](const FileChooser& fc){auto file=fc.getResult();if(file==File())return;String csv="frequency_hz,magnitude_db,phase_relative_deg\n";for(size_t i=1;i<measurement.size();++i)csv+=String(i*measuredRate/measuredSize,6)+","+String(measurement[i],6)+","+String(measuredPhase[i],6)+"\n";status=file.replaceWithText(csv)?"CSV exportado.":"Nao foi possivel salvar o CSV.";repaint();});};
  }
  for(auto* combo:{&quality,&view,&scaleChoice}){canvas.addAndMakeVisible(combo);combo->setColour(ComboBox::backgroundColourId,Colour(0xff392346));combo->setColour(ComboBox::textColourId,Colours::white);}
- quality.addItem("Rapido",1);quality.addItem("Equilibrado",2);quality.addItem("Preciso",3);quality.setSelectedId(p.quality.load()+1,dontSendNotification);
+ quality.addItem("Rapido / ajustar",1);quality.addItem("Equilibrado",2);quality.addItem("Preciso / validar",3);quality.setSelectedId(p.quality.load()+1,dontSendNotification);
  quality.onChange=[this]{p.quality=quality.getSelectedId()-1;if(!NF_PROBE)resetLive();};
  view.addItem("Ganho",1);view.addItem("Ganho + fase",2);view.addItem("Espectro",3);view.setSelectedId(1,dontSendNotification);view.onChange=[this]{repaint();};
  scaleChoice.addItem("Escala auto",1);scaleChoice.addItem("+/- 12 dB",2);scaleChoice.addItem("+/- 24 dB",3);scaleChoice.addItem("+/- 48 dB",4);scaleChoice.addItem("+/- 96 dB",5);scaleChoice.setSelectedId(1,dontSendNotification);scaleChoice.onChange=[this]{repaint();};
@@ -149,7 +153,7 @@ void Editor::analyse(){
 }
 void Editor::resetLive(){
  int a,n,c,m;p.fifo.prepareToRead(p.fifo.getNumReady(),a,n,c,m);p.fifo.finishedRead(n+m);
- continuous.setProfile(p.quality.load(),p.rate);liveSamples.assign((size_t)continuous.length,0);liveHistory.assign((size_t)continuous.length,0);historyWrite=historyFill=0;stableFrames=0;lastAudioTime=Time::getMillisecondCounter();seenGeneration=p.generation.load();seenDrops=p.dropped.load();magnitude.clear();phase.clear();spectrum.clear();captured=false;
+ continuous.setProfile(p.quality.load(),p.rate);liveGate.reset();measurementCurrent=false;previewReady=false;previewMagnitude.clear();previewPhase.clear();liveSamples.assign((size_t)continuous.length,0);liveHistory.assign((size_t)continuous.length,0);historyWrite=historyFill=0;stableFrames=0;lastAudioTime=Time::getMillisecondCounter();seenGeneration=p.generation.load();seenDrops=p.dropped.load();magnitude.clear();phase.clear();spectrum.clear();captured=false;
 }
 void Editor::timerCallback(){
  if(NF_PROBE)live.setButtonText(p.signal.load()==2?"LIVE: parar":"LIVE: iniciar");
@@ -157,15 +161,27 @@ void Editor::timerCallback(){
 if(!frozen && p.state.load(std::memory_order_acquire)==3)analyse();
   if(liveActive){
    if(continuous.profile!=p.quality.load() || seenGeneration!=p.generation.load() || seenDrops!=p.dropped.load())resetLive();
-   int a,n,c,m;int ready=p.fifo.getNumReady();p.fifo.prepareToRead(ready,a,n,c,m);
-   auto append=[&](int index,int length){for(int i=0;i<length;++i){float sample=p.stream[(size_t)(index+i)];liveHistory[historyWrite]=sample;historyWrite=(historyWrite+1)%liveHistory.size();historyFill=jmin(historyFill+1,liveHistory.size());}};
-   append(a,n);append(c,m);p.fifo.finishedRead(n+m);if(n+m>0)lastAudioTime=Time::getMillisecondCounter();
-   if(!frozen && n+m>0 && historyFill==liveHistory.size()){
-    for(size_t i=0;i<liveSamples.size();++i)liveSamples[i]=liveHistory[(historyWrite+i)%liveHistory.size()];
-    if(continuous.analyse(liveSamples.data())){float change=1000;if(magnitude.size()==continuous.magnitude.size()){change=0;for(size_t k=1;k<magnitude.size();++k){double hz=k*p.rate/continuous.length;if(hz>=20 && hz<=20000)change=jmax(change,std::abs(magnitude[k]-continuous.magnitude[k]));}}stableFrames=change<0.08f?stableFrames+1:0;magnitude=continuous.magnitude;phase=continuous.phase;responseSize=continuous.length;responseRate=p.rate;captured=true;spectrum.clear();inputPeak=0;for(float sample:liveSamples)inputPeak=jmax(inputPeak,std::abs(sample));status="LIVE | "+String(p.rate/responseSize,3)+" Hz/bin | janela "+String(responseSize/p.rate,2)+" s | "+(inputPeak>=1?"NIVEL ACIMA DE 0 dBFS":(stableFrames>=3?"estavel entre janelas":"em transicao / aguarde estabilizar"));}
-    else{status="Sem sinal valido: confira LIVE, perfil igual no Probe e transporte da DAW.";captured=false;magnitude.clear();phase.clear();}
-   }else if(!frozen && historyFill<liveHistory.size())status="Preparando LIVE: "+String(int(100*historyFill/liveHistory.size()))+"% | mesmo perfil no Probe e Capture";
-   if(!frozen && n+m==0 && Time::getMillisecondCounter()-lastAudioTime>750)status="Audio parado: verifique transporte e roteamento. Ultima curva mantida.";
+   if(seenAudio!=p.processedSamples.load()){seenAudio=p.processedSamples.load();lastAudioTime=Time::getMillisecondCounter();}
+   const int frame=continuous.length;
+   int received=0;
+   while(p.fifo.getNumReady()>=frame){
+    int a,n,c,m;p.fifo.prepareToRead(frame,a,n,c,m);
+    for(int i=0;i<n;++i)liveSamples[(size_t)i]=p.stream[(size_t)(a+i)];
+    for(int i=0;i<m;++i)liveSamples[(size_t)(n+i)]=p.stream[(size_t)(c+i)];
+    p.fifo.finishedRead(n+m);received+=n+m;historyFill=(size_t)frame;lastAudioTime=Time::getMillisecondCounter();
+    if(frozen)continue;
+    measurementCurrent=false;
+    if(!continuous.analyse(liveSamples.data())){previewReady=false;liveGate.reset();status="Sem sinal valido. Ultima curva confirmada mantida.";continue;}
+    previewReady=continuous.shortResponse;if(previewReady){previewMagnitude=continuous.magnitude;previewPhase=continuous.phase;}
+    inputPeak=0;for(float sample:liveSamples)inputPeak=jmax(inputPeak,std::abs(sample));
+    if(liveGate.submit(continuous.magnitude,continuous.phase,p.rate,frame)){
+     magnitude=continuous.magnitude;phase=continuous.phase;responseSize=frame;responseRate=p.rate;captured=true;measurementCurrent=true;spectrum.clear();
+     status="LIVE confirmado | "+String(p.rate/frame,3)+" Hz/bin | periodo "+String(frame/p.rate,2)+" s"+(inputPeak>=1?" | NIVEL ACIMA DE 0 dBFS":"");
+    }else status=previewReady?"PREVIA POR IMPULSO: ajuste em andamento. Aguarde confirmar para salvar.":captured?"Ajustes em transicao: ultima curva confirmada mantida.":"Confirmando leitura: aguarde duas aquisicoes compativeis.";
+   }
+   if(!frozen && received==0 && !captured && historyFill==0)status="Preparando aquisicao: "+String(int(100*jmin(p.fifo.getNumReady(),frame)/frame))+"% | mesmo perfil no Probe";
+   hold.setEnabled(captured);save.setEnabled(captured && (measurementCurrent || frozen));compare.setEnabled(captured && (measurementCurrent || frozen));
+   if(!frozen && received==0 && Time::getMillisecondCounter()-lastAudioTime>750)status="Audio parado: verifique transporte e roteamento. Ultima curva mantida.";
    repaint();return;
   }
   if(p.fifo.getNumReady()>=count){int a,n,c,m;p.fifo.prepareToRead(count,a,n,c,m);
@@ -181,14 +197,18 @@ void Editor::paintCanvas(Graphics& g){
  g.fillAll(Colour(0xff211729));g.setColour(Colour(0xff392346));g.fillRect(0,0,defaultWidth,100);
  g.drawImageWithin(logo,20,8,175,82,RectanglePlacement::centred);
  g.setColour(Colours::white);g.setFont(32);g.drawText(NF_PROBE?"NF CAPTURE  /  PROBE":"NF CAPTURE",200,20,600,40,Justification::centred);
- g.setColour(Colour(0xffebc5ff));g.setFont(13);g.drawText("NF AUDIO TOOLS     /     LAB BETA 0.2 / LIVE / R3",200,63,600,22,Justification::centred);
+ g.setColour(Colour(0xffebc5ff));g.setFont(13);g.drawText("NF AUDIO TOOLS     /     LAB BETA 0.2 / LIVE / R4",200,63,600,22,Justification::centred);
  g.setFont(13);g.setColour(Colours::lightgrey);g.drawText(frozen?"HOLD | "+status:status,24,defaultHeight-52,defaultWidth-48,24,Justification::centredLeft);
- g.setColour(Colour(0xffc1adcc));g.drawText(NF_PROBE?"Mesmo perfil nos dois componentes. LIVE usa multisseno de aproximadamente -36 dBFS RMS.":"Ganho: violeta / dB   |   Referencia A: turquesa   |   Fase: painel separado / graus   |   Perfil igual no Probe",24,defaultHeight-28,defaultWidth-48,20,Justification::centredLeft);
+ g.setColour(Colour(0xffc1adcc));g.drawText(NF_PROBE?"Mesmo perfil nos dois componentes. LIVE usa impulsos isolados: -30,1 dBFS de pico.":"Previa identificada | Exportacao: somente confirmadas | Violeta: ganho / dB | Fase: painel separado",24,defaultHeight-28,defaultWidth-48,20,Justification::centredLeft);
  if(NF_PROBE){g.setColour(Colours::white);g.drawText("Fluxo: NF Capture Probe  >  seu plugin  >  NF Capture",32,255,900,26,Justification::centredLeft);return;}
+ const bool showingPreview=liveActive && previewReady && !measurementCurrent && !frozen;
+ const auto& shownMagnitude=showingPreview?previewMagnitude:magnitude;const auto& shownPhase=showingPreview?previewPhase:phase;int shownSize=showingPreview?continuous.length:responseSize;double shownRate=showingPreview?p.rate:responseRate;
+ if(showingPreview){g.setColour(Colour(0xffffc67d));g.drawText("PREVIA / AINDA NAO CONFIRMADA",600,188,345,16,Justification::centredRight);}
+ else if(liveActive && captured && !measurementCurrent && !frozen){g.setColour(Colour(0xffffc67d));g.drawText("ULTIMA CURVA CONFIRMADA",600,188,345,16,Justification::centredRight);}
  const bool showPhase=view.getSelectedId()==2, showSpectrum=view.getSelectedId()==3;
  Rectangle<float> r(65,205,880,showPhase?220.0f:345.0f),pr(65,455,880,95);
  auto x=[&](double hz){return 65.0f+float(std::log(hz/20.0)/std::log(1000.0))*880;};
- float range=12;for(size_t k=1;k<magnitude.size();++k){double hz=k*responseRate/responseSize;if(hz>=20 && hz<=jmin(20000.0,responseRate/2))range=jmax(range,std::abs(magnitude[k]));}for(float value:reference)if(std::isfinite(value))range=jmax(range,std::abs(value));range=jlimit(12.0f,96.0f,12*std::ceil(range/12));if(scaleChoice.getSelectedId()>1)range=std::array<float,4>{12,24,48,96}[(size_t)scaleChoice.getSelectedId()-2];
+ float range=12;for(size_t k=1;k<shownMagnitude.size();++k){double hz=k*shownRate/shownSize;if(hz>=20 && hz<=jmin(20000.0,shownRate/2))range=jmax(range,std::abs(shownMagnitude[k]));}for(float value:reference)if(std::isfinite(value))range=jmax(range,std::abs(value));range=jlimit(12.0f,96.0f,12*std::ceil(range/12));if(scaleChoice.getSelectedId()>1)range=std::array<float,4>{12,24,48,96}[(size_t)scaleChoice.getSelectedId()-2];
  auto panel=[&](Rectangle<float> rect){g.setColour(Colour(0xff291c34));g.fillRoundedRectangle(rect,6);for(double hz:{20.,50.,100.,200.,500.,1000.,2000.,5000.,10000.,20000.}){g.setColour(Colour(0xff523960));g.drawVerticalLine((int)x(hz),rect.getY(),rect.getBottom());}};panel(r);if(showPhase)panel(pr);
  for(int i=0;i<=6;++i){float y=r.getY()+i*r.getHeight()/6;float value=showSpectrum?-20.0f*i:range-2*range*i/6;g.setColour(Colour(i==3?0xff9878a9:0xff523960));g.drawHorizontalLine((int)y,r.getX(),r.getRight());g.setColour(Colour(0xffc1adcc));g.drawText(String(value,0),12,(int)y-8,45,18,Justification::centredRight);}
  g.setColour(Colour(0xffebc5ff));g.drawText(showSpectrum?"ESPECTRO / dBFS":"GANHO / dB",65,188,200,16,Justification::centredLeft);
@@ -199,7 +219,7 @@ void Editor::paintCanvas(Graphics& g){
  if(type==0 && px<880){double upperHz=20*std::pow(1000.0,(px+1)/880.0);int lo=jmax(1,(int)std::ceil(bin)),hi=jmin((int)values.size()-1,(int)std::floor(upperHz*bins/sr));if(lo<=hi){int minimum=lo,maximum=lo;for(int k=lo+1;k<=hi;++k){if(values[(size_t)k]<values[(size_t)minimum])minimum=k;if(values[(size_t)k]>values[(size_t)maximum])maximum=k;}int first=jmin(minimum,maximum),second=jmax(minimum,maximum);for(int k:{first,second}){float xx=x(k*sr/bins),yy=jlimit(rect.getY(),rect.getBottom(),rect.getCentreY()-values[(size_t)k]*rect.getHeight()/(2*range));path.lineTo(xx,yy);}}}
  }g.setColour(color);g.strokePath(path,PathStrokeType(1.7f));};
  if(showSpectrum){line(spectrum,Colour(0xffb5a0cd),1,count,p.rate);if(liveActive){g.setColour(Colours::white);g.drawText("Espectro disponivel com LIVE parado. Use Ganho para medir a resposta.",90,350,820,30,Justification::centred);}}
- else{line(reference,Colour(0xff55d6d0),0,referenceSize,referenceRate);line(magnitude,Colour(0xffcf94fa),0,responseSize,responseRate);if(showPhase)line(phase,Colour(0xffffba75),2,responseSize,responseRate);}
- if(cursorHz>0 && !showSpectrum && magnitude.size()>1 && cursorHz<responseRate/2){int k=jlimit(1,(int)magnitude.size()-1,(int)std::round(cursorHz*responseSize/responseRate));double hz=k*responseRate/responseSize;g.setColour(Colour(0xffebc5ff));g.drawText(String(hz,2)+" Hz | "+String(magnitude[(size_t)k],2)+" dB"+(showPhase?" | "+String(phase[(size_t)k],1)+" graus":" (bin medido)"),520,160,450,26,Justification::centredRight);g.setColour(Colour(0x668888aa));g.drawVerticalLine((int)x(hz),r.getY(),550);}
+ else{line(reference,Colour(0xff55d6d0),0,referenceSize,referenceRate);line(shownMagnitude,Colour(0xffcf94fa),0,shownSize,shownRate);if(showPhase)line(shownPhase,Colour(0xffffba75),2,shownSize,shownRate);}
+ if(cursorHz>0 && !showSpectrum && shownMagnitude.size()>1 && cursorHz<shownRate/2){int k=jlimit(1,(int)shownMagnitude.size()-1,(int)std::round(cursorHz*shownSize/shownRate));double hz=k*shownRate/shownSize;g.setColour(Colour(0xffebc5ff));g.drawText(String(hz,2)+" Hz | "+String(shownMagnitude[(size_t)k],2)+" dB"+(showPhase?" | "+String(shownPhase[(size_t)k],1)+" graus":" (bin medido)"),520,160,450,26,Justification::centredRight);g.setColour(Colour(0x668888aa));g.drawVerticalLine((int)x(hz),r.getY(),550);}
 }
 AudioProcessor* JUCE_CALLTYPE createPluginFilter(){return new Processor();}

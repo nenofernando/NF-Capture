@@ -1,78 +1,89 @@
-# NF Capture — beta 0.2 LIVE / revisão R3
+# NF Capture — LIVE R4
 
-NF Audio Tools. VST3 e AU universais para Mac Intel e Apple Silicon. A revisão R3 melhora o método de medição, a resolução, o gráfico e as indicações de estado. O identificador de versão dos bundles permanece 0.2.0; a interface identifica R3.
+## Instalar a atualização
 
-## Atualizar
+1. Feche a Mixa e as outras DAWs.
+2. Abra NF-Capture-R4-Installer.pkg e conclua a instalação para o usuário atual.
+3. Reabra a Mixa e refaça a busca de plugins, se necessário. A interface deve indicar R4.
 
-Feche a Mixa. Substitua AMBOS os componentes: NF Capture e NF Capture Probe. Não misture Probe R2 com Capture R3: o sinal LIVE mudou. Copie os arquivos .vst3 para ~/Library/Audio/Plug-Ins/VST3 ou .component para ~/Library/Audio/Plug-Ins/Components. Reabra a DAW e refaça a busca, se necessário. Os arquivos têm assinatura local e não têm notarização Apple.
+O instalador está configurado para atualizar Capture e Probe, em VST3 e AU, dentro de ~/Library/Audio/Plug-Ins. Os quatro bundles são substituídos nas respectivas pastas VST3 e Components. Não há scripts de instalação nem remoção de outros plugins. O instalador é local, sem assinatura Developer ID Installer ou notarização Apple. Os executáveis dos plugins têm assinatura ad-hoc e são universais Intel / Apple Silicon.
 
-## Medir acompanhando os knobs
+Se usar o pacote manual, substitua AMBOS os componentes. Não misture R3 com R4: o sinal LIVE mudou. O identificador de versão dos bundles continua 0.2.0; a revisão R4 é identificada na interface. O recibo do instalador é 0.2.4.
 
-1. Use uma pista sem arquivos de áudio, com ganho em 0 dB.
-2. Ordem dos inserts: NF Capture Probe → plugin em teste → NF Capture.
-3. Escolha o MESMO perfil nos menus dos dois componentes. Comece por Equilibrado. Para picos estreitos nos graves, use Preciso nos dois.
+## O que foi corrigido
+
+A R3 dividia uma janela longa de multisseno que podia misturar posições diferentes dos knobs. Isso gerava serrilhado durante os ajustes. A R4 usa impulsos periódicos isolados, em períodos completos, em vez do chiado contínuo. O sinal LIVE tem pico de -30,1 dBFS. Cliques podem continuar audíveis: ainda é um sinal de teste.
+
+Há duas situações distintas no gráfico:
+
+- PREVIA: resposta curta por impulso usada para acompanhar ajustes. Está identificada como não confirmada. Não pode ser exportada nem usada como referência A.
+- LIVE confirmado: duas aquisições independentes consecutivas foram compatíveis. Os valores publicados são os próprios bins medidos; não há suavização numérica em frequência para esconder erros.
+
+Durante uma transição, uma resposta longa ou instável pode não gerar uma prévia apropriada. Nesse caso, a última curva confirmada fica na tela com identificação explícita. Sem uma curva confirmada anterior, o gráfico aguarda. Não é prometida resposta instantânea ou precisa enquanto o sistema muda rapidamente.
+
+A confirmação exige diferenças máximas de 0,10 dB e 0,5 grau entre aquisições consecutivas na faixa útil; fase abaixo de -100 dB não participa desse teste. Esse critério mede repetibilidade, não prova linearidade nem certifica exatidão absoluta. A prévia depende da concentração da energia da resposta em torno do pico dominante, em até aproximadamente 50 ms por lado, limitada pelo período. Não é uma identificação instantânea dos parâmetros internos do plugin.
+
+## Usar na Mixa
+
+1. Em uma pista sem arquivos de áudio, coloque: NF Capture Probe → plugin em teste → NF Capture.
+2. Use o MESMO perfil no Probe e no Capture.
+3. Para mexer nos knobs, comece por Rapido / ajustar nos dois componentes.
 4. Ative o transporte da DAW e LIVE nos dois componentes.
-5. Aguarde o indicador de preparação chegar a 100% e a curva estabilizar. Ajuste os knobs do seu plugin.
-6. Hold congela a leitura. Retomar volta a acompanhar os ajustes. Guardar A mantém uma curva de referência na janela. Exportar CSV preserva os bins medidos.
-7. Ao terminar, pare LIVE no Probe e no Capture.
+5. Aguarde a primeira confirmação. Ajuste o plugin; acompanhe a prévia ou a última curva confirmada, conforme indicado.
+6. Para conferir picos estreitos nos graves, pare os knobs e selecione Preciso / validar nos dois. Aguarde a confirmação.
+7. Hold congela a última curva confirmada. Retomar continua a aquisição. Guardar A e Exportar CSV ficam disponíveis para dados confirmados ou congelados explicitamente com Hold.
 
-Comece com o plugin em teste em bypass: a resposta deve indicar 0 dB. Depois ative o plugin. Desative ruído analógico, saturação e modulação para medir EQ linear. No caso de um equalizador dinâmico, desative a ação de compressão para comparar com sua curva estática.
+Faça inicialmente um teste com o plugin em bypass: a curva confirmada deve estar em 0 dB. Depois ative o plugin. Desative ruído analógico, saturação e modulação para comparar uma resposta de EQ linear. Em um equalizador dinâmico, desative a compressão para comparar com sua curva estática.
 
-O sinal de teste é audível. O Probe em LIVE substitui o áudio recebido por um multisseno periódico de aproximadamente -36,12 dBFS RMS. Ajuste a monitoração após o Capture; não altere o nível entre Probe e Capture. Boosts e processamentos não lineares podem exceder 0 dBFS; o analisador sinaliza o nível recebido, sem afirmar que o plugin tenha efetivamente clipado.
+O Probe LIVE substitui o áudio recebido pelo sinal de teste. Controle a monitoração depois do Capture; não altere o nível entre os componentes. Ao terminar, pare LIVE nos dois.
 
-## Perfis: precisão e tempo de resposta
+## Perfis e tempo
 
 Em 44,1 kHz:
 
-| Perfil | Amostras por janela | Espaçamento dos bins | Duração da janela |
-|---|---:|---:|---:|
-| Rápido | 8192 | 5,3833 Hz | 0,186 s |
-| Equilibrado | 65536 | 0,6729 Hz | 1,486 s |
-| Preciso | 262144 | 0,1682 Hz | 5,944 s |
+| Perfil | Amostras por período | Espaçamento dos bins | Período | Primeira confirmação: mínimo aproximado |
+|---|---:|---:|---:|---:|
+| Rapido / ajustar | 8192 | 5,383 Hz | 0,186 s | 0,372 s |
+| Equilibrado | 65536 | 0,673 Hz | 1,486 s | 2,972 s |
+| Preciso / validar | 262144 | 0,168 Hz | 5,944 s | 11,889 s |
 
-Em 48 kHz: 5,8594 / 0,7324 / 0,1831 Hz por bin, respectivamente. Em 96 kHz, as janelas dobram de tamanho para manter os mesmos espaçamentos e durações de 48 kHz. Acima de 64 kHz, os tamanhos usados são 16384 / 131072 / 524288.
+Depois da confirmação, cada nova aquisição compatível pode atualizar a leitura uma vez por período. A interface é repintada até 15 vezes/s, mas isso não aumenta a quantidade de medições independentes. Uma mudança exige novas aquisições compatíveis; filtros com caudas longas podem demorar mais para estabilizar.
 
-A interface atualiza até 15 vezes por segundo usando janelas sobrepostas. Isso não transforma uma janela de 5,94 s numa medição independente a cada 67 ms: após mudar o EQ, a janela ainda contém parte do áudio anterior. Quanto maior a precisão, mais tempo é necessário para refletir integralmente o novo ajuste. Aguarde estabilizar antes de exportar. “Estável entre janelas” indica pequenas mudanças entre leituras consecutivas; não certifica linearidade, ausência de distorção ou exatidão absoluta.
+Em 48 kHz, os períodos são 0,171 / 1,365 / 5,461 s, e os espaçamentos são 5,859 / 0,732 / 0,183 Hz. Em 96 kHz, os números de amostras dobram para manter os mesmos espaçamentos e durações de 48 kHz. Instâncias novas começam no perfil Rápido; sessões anteriores preservam o perfil salvo. Confira o perfil nos dois componentes após atualizar.
 
-## Ganho, fase, espectro e cursor
+## Leitura e exportação
 
-- Ganho é a visualização padrão. A curva violeta usa dB; a curva A usa turquesa.
-- Ganho + fase abre um painel separado em graus. Não confunda fase com ganho. A fase é relativa ao pico dominante da resposta estimada; não mede latência absoluta.
-- Espectro mostra níveis por frequência em dBFS com o LIVE do analisador parado. Não é a curva de transferência de EQ.
-- Escala auto adapta a faixa vertical em passos de 12 dB, até ±96 dB. Há também escalas manuais.
-- Passe o mouse pelo gráfico: o cursor mostra a frequência real do bin mais próximo e seu ganho. No modo de fase, mostra também graus.
-- O desenho liga os pontos e preserva mínimos/máximos medidos dentro de cada coluna de pixels. Essa apresentação não inventa resolução entre bins. Um pico situado entre bins ainda pode ser subestimado; use Preciso.
-- O CSV contém os bins reais da captura, incluindo frequências fora da faixa visível até Nyquist. A curva A conserva sua própria grade e taxa de amostragem.
+Ganho é a visualização padrão, em dB. Ganho + fase abre um painel separado em graus. A fase é relativa ao pico dominante da resposta; não representa latência absoluta. Espectro usa dBFS e fica disponível com LIVE do analisador parado.
 
-## Tamanho e aparência
+A escala automática vai até ±96 dB; há escalas manuais. O desenho preserva mínimos e máximos medidos entre colunas de pixels, mas não inventa resolução entre bins. Um pico situado entre bins ainda pode ser subestimado: use Preciso.
 
-Interface roxa, com nomes centralizados. Arraste a alça no canto inferior direito para variar entre 70% e 160%, preservando as proporções. Dois cliques no logo NF restauram 1000 × 660 no Capture ou 1000 × 340 no Probe.
+O cursor informa a frequência real do bin mais próximo. A prévia continua identificada como não confirmada. O CSV usa a curva confirmada existente no momento do clique em Exportar, mesmo que a medição mude enquanto a janela de arquivo estiver aberta.
 
-## Captura única por impulso
+## Interface e retomada
 
-Este é um modo diferente do LIVE. Pare LIVE no Probe e no Capture primeiro. Com silêncio na pista, clique em Captura unica no Capture e envie um único impulso pelo Probe. Aguarde 65536 amostras. Não arme a captura com o multisseno LIVE ainda ativo: isso não é uma resposta ao impulso válida.
+Arraste a alça inferior direita para variar de 70% a 160%. Dois cliques no logo NF restauram Capture para 1000 × 660 ou Probe para 1000 × 340.
 
-O impulso tem amplitude 0,25 e a resposta é normalizada por esse valor. A captura inicia acima de 0,000001 (-120 dBFS); ruído e coeficientes anteriores ao limiar podem prejudicar a leitura. Caudas que excedem a janela são truncadas. A fase nesse modo é relativa ao início detectado, uma referência diferente da usada em LIVE.
+LIVE e perfil ficam salvos com a instância. Ao recriar a cadeia, são necessárias novas aquisições para confirmar a resposta. Isso depende também da DAW restaurar o estado e o roteamento. Quedas de amostras invalidam a aquisição incompleta e reiniciam a confirmação. Hold mantém a curva, mas não interrompe o gerador do Probe.
 
-## Retomada e limites
+## Captura única manual
 
-- O modo LIVE e o perfil ficam salvos com as instâncias. Ao recriar uma cadeia, a janela volta a ser preenchida antes de medir. O funcionamento depende também de a DAW restaurar o estado e manter o roteamento.
-- Sessões antigas não continham todos esses campos: ative LIVE e confira os perfis uma vez após atualizar. O seno volta desligado ao restaurar a sessão.
-- Perdas de amostras no buffer ou reinicialização do processamento invalidam a janela anterior e iniciam uma nova preparação.
-- Hold congela a leitura, mas o Probe continua gerando áudio até ser parado.
-- Curvas e referência A ficam apenas na janela atual. Exporte antes de fechar.
-- Mede somente o canal esquerdo/mono. O analisador mantém os dois canais de áudio inalterados.
-- Mede sistemas lineares em regime estável. Saturação, compressores, modulação, ruído ou um perfil diferente no Probe invalidam uma comparação com uma curva de EQ estática.
-- Não calcula THD, não mede latência absoluta, não reproduz a equalização capturada e ainda não possui captura calibrada de hardware.
-- A atualização foi validada com testes internos. Ainda precisa de confirmação na Mixa. Windows VST3 não foi compilado nesta entrega.
+É um modo distinto do LIVE. Pare LIVE no Probe e no Capture, deixe a pista em silêncio, arme Captura unica e envie um único impulso manual pelo Probe. Espere 65536 amostras. Não arme esse modo com o LIVE do Probe ativo.
+
+O impulso manual continua com amplitude 0,25. A captura é normalizada por esse valor e inicia acima do limiar de 0,000001. Ruído, coeficientes anteriores ao limiar e caudas truncadas podem prejudicar o resultado. A fase é relativa ao início detectado, uma referência diferente da usada em LIVE.
+
+## Limites
+
+Mede somente o canal esquerdo/mono. O analisador deixa o áudio dos dois canais inalterado. Não calcula THD, não mede latência absoluta, não reproduz a equalização capturada e ainda não oferece captura calibrada de hardware. Curvas e referência A ficam na janela atual: exporte antes de fechar.
+
+A R4 foi verificada com testes internos, incluindo mudanças de parâmetros durante as aquisições. Ainda requer confirmação dentro da Mixa. Repetibilidade e prévia curta não garantem a identificação correta de um sistema não linear, modulado ou periodicamente variável. Windows VST3 não foi compilado nesta entrega.
 
 ## Compilar
 
-Requer CMake 3.22+, C++17, Xcode no Mac e JUCE 8.0.12. Respeite a licença do JUCE.
+Requer CMake 3.22+, C++17, Xcode no Mac e JUCE 8.0.12, com sua licença aplicável.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64'
 cmake --build build --config Release -j 4
 ```
 
-Os alvos NFVerify e NFVerifyProbe executam os testes internos. Veja VALIDACAO.md.
+NFVerify e NFVerifyProbe executam os testes internos. Consulte VALIDACAO.md.
